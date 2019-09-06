@@ -1,0 +1,19 @@
+*~
+*.pyc
+*.swp
+.tox
+.pytest_cache
+.mypy_cache
+__pycache__
+data/*
+s3p/*
+
+# test-related
+.coverage
+.cache
+.pytest_cache
+
+# developer environments
+.idea
+.vscode
+*.iml
