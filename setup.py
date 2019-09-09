@@ -29,7 +29,7 @@ from setuptools.command.install import install as _install
 __author__ = "Felix Gao"
 __copyright__ = "Copyright 2012-2018 Intuit, Inc."
 __license__ = "http://www.apache.org/licenses/LICENSE-2.0"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __maintainer__ = "Felix Gao"
 __status__ = "Development"
 
@@ -48,10 +48,10 @@ setup(name='s3pcmd',
       license=__license__,
       long_description=long_description,
       long_description_content_type='text/markdown',
-      url='https://github.com/',
+      url='https://github.com/felixgao/S3PCmd.git',
       py_modules=['s3pcmd'],
       scripts=['s3pcmd.py'], 
-      install_requires=['boto3>=1.3.1', 'pytz>=2016.4', 'loguru>=0.3.0', 'boto3_type_annotations>=0.3.1'],
+      install_requires=['click', 'boto3>=1.3.1', 'pytz>=2016.4', 'loguru>=0.3.0', 'boto3_type_annotations>=0.3.1'],
       entry_points={
         'console_scripts': [
             's3pcmd = s3pcmd:main',

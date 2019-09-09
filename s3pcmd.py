@@ -20,6 +20,7 @@
 S3P command line tool.
 """
 
+import click
 import errno
 import enum
 import fnmatch
@@ -83,7 +84,6 @@ class S3Path(object):
     def __eq__(self, other: "S3Path") -> bool:
         return self.path == other.path and self.bucket == other.bucket
 
-    @lru_cache(maxsize=1)
     def is_file(self) -> bool:
         return not self.path.endswith("/")
 
@@ -108,7 +108,8 @@ class S3Path(object):
             except KeyError:
                 return
             for obj in contents:
-                # key = obj["Key"]
+                # obj contains Contents from
+                # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.list_objects_v2
                 yield obj
 
     def rmr(self) -> None:
@@ -296,7 +297,7 @@ class S3BotoClient(object):
     1. rmr s3 data using its full path.
     2. cp from one S3 location to another S3 location
     3. mv from one S3 location to another S3 location
-    4. add empty meta data(flag file) to a S3 location
+    4. add meta data(flag file) to a S3 location
   """
 
     # Encapsulate boto3 interface intercept all API calls.
@@ -314,12 +315,12 @@ class S3BotoClient(object):
 
     @classmethod
     @log_calls
-    def rm(cls, s3_uri: str, recursive=False) -> None:
+    def rm(cls, s3_uri: str, recursive=False, date_id=datetime.utcnow()) -> None:
         if not S3Path.is_valid(s3_uri):
             raise cls.InvalidS3PathError(
                 "URI: {s3_uri} is invalid format".format(s3_uri=s3_uri)
             )
-        s3_path = S3Path(s3_uri)
+        s3_path = S3Path(S3DatePath(s3_uri).resolve_dateid(dt=date_id))
         if s3_path.is_file():
             s3_path.rmr()
         else:
@@ -334,13 +335,13 @@ class S3BotoClient(object):
 
     @classmethod
     @log_calls
-    def ls(cls, s3_uri: str, limit=1_000) -> List[S3ListContent]:
+    def ls(cls, s3_uri: str, limit=1_000, date_id=datetime.utcnow()) -> List[S3ListContent]:
         """ Performs cases in-sensitive listing of keys under the path """
         if not S3Path.is_valid(s3_uri):
             raise cls.InvalidS3PathError(
                 "URI: {s3_uri} is invalid format".format(s3_uri=s3_uri)
             )
-        s3_path = S3Path(s3_uri)
+        s3_path = S3Path(S3DatePath(s3_uri).resolve_dateid(dt=date_id))
         return list(
             it.islice(
                 (
@@ -360,10 +361,10 @@ class S3BotoClient(object):
 
     @classmethod
     @log_calls
-    def cp(cls, s3_src_uri: str, s3_dst_uri: str) -> None:
+    def cp(cls, s3_src_uri: str, s3_dst_uri: str, date_id=datetime.utcnow()) -> None:
         """ cp will copy data recursively if it is a prefix """
         if S3Path.is_valid(s3_src_uri) and S3Path.is_valid(s3_dst_uri):
-            s3_src_path, s3_dst_path = S3Path(s3_src_uri), S3Path(s3_dst_uri) 
+            s3_src_path, s3_dst_path = S3Path(S3DatePath(s3_src_uri).resolve_dateid(dt=date_id)), S3Path(S3DatePath(s3_dst_uri).resolve_dateid(dt=date_id))
             if s3_src_path != s3_dst_path: # if you are trying to copy the data from the same src/dst, noop
                 s3_src_path.cp(s3_dst_path)
         else:
@@ -388,19 +389,70 @@ class S3BotoClient(object):
     @classmethod
     @log_calls
     def add_flag_file(
-        cls, s3_uri: str, file_name: str = "_SUCCESS", content: str = ""
+        cls, s3_uri: str, file_name: str = "_SUCCESS", content: str = "", date_id=datetime.utcnow()
     ) -> None:
         if not S3Path.is_valid(s3_uri):
             raise cls.InvalidS3PathError(
                 "URI: {s3_uri} is invalid format".format(s3_uri=s3_uri)
             )
-        s3_path = S3Path(s3_uri)
+        s3_path = S3Path(S3DatePath(s3_uri).resolve_dateid(dt=date_id))
         s3_path.put(file_name, content.encode("utf-8"))
 
 
-
-def main():
+@click.group()
+@click.pass_context
+def main(ctx):
+    #TODO: add context that needs to pass down to to the command later
     pass
+
+@main.command()
+@click.argument('path', nargs=1)
+@click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+def ls(path, date):
+    """
+    list all the keys associated with the current path.  
+    Also converts {DATEID} or {DATETIMEID} based on date parameter.  
+    Default to current datetime.
+    """
+    print("Keys")
+    for obj in S3BotoClient.ls(path, date_id=date):
+        print(f'{obj.key}')
+
+@main.command()
+@click.argument('src_path', nargs=1)
+@click.argument('dst_path', nargs=1)
+@click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+def cp(src_path, dst_path, date):
+    """
+    copy contents from one s3 path to another s3 path.  
+    Also converts {DATEID} or {DATETIMEID} based on date parameter.  
+    Default to current datetime.
+    """
+    S3BotoClient.cp(s3_src_uri=src_path, s3_dst_uri=dst_path, date_id=date)
+
+@main.command()
+@click.argument('src_path', nargs=1)
+@click.argument('dst_path', nargs=1)
+@click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+def mv(src_path, dst_path, date):
+    """
+    mv contents from one s3 path to another s3 path not atomicly.  
+    Also converts {DATEID} or {DATETIMEID} based on date parameter.  
+    Default to current datetime.
+    """
+    S3BotoClient.cp(s3_src_uri=src_path, s3_dst_uri=dst_path, date_id=date)
+    S3BotoClient.rm(s3_uri=src_path, date_id=date)
+
+@main.command()
+@click.argument('s3_path', nargs=1)
+@click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+def rm(s3_path, date):
+    """
+    rm contents from s3 path recursively.
+    Also converts {DATEID} or {DATETIMEID} based on date parameter.  
+    Default to current datetime.
+    """
+    S3BotoClient.rm(s3_uri=s3_path, recursive=True, date_id=date)
 
 
 if __name__ == "__main__":

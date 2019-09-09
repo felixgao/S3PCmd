@@ -11,7 +11,8 @@ SECOND_BUCKET = "BAR-TEST-BUCKET"
 
 def create_test_bucket_and_keys(n: int, s3_bucket:str, s3_prefix: str, content:str = ''):
     res = boto3.resource('s3')
-    res.create_bucket(Bucket=s3_bucket)
+    if res.Bucket(s3_bucket).creation_date is None:
+       res.create_bucket(Bucket=s3_bucket)
     for key in ["{prefix}/key{idx:03}".format(prefix=s3_prefix, idx=idx) for idx in range(n) ]:
         object = res.Object(s3_bucket, key)
         object.put(Body=content.encode('utf-8'))
