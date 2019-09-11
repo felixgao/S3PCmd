@@ -461,6 +461,25 @@ def rm(s3_path, date):
     """
     S3BotoClient.rm(s3_uri=s3_path, recursive=True, date_id=date)
 
+@main.command()
+@click.argument('s3_path', nargs=1)
+@click.option('--top', '-n', default=10)
+@click.option('--asc',  is_flag=True)
+@click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+def keep(s3_path, top, asc, date):
+    """
+    keep only the top N (default 10) prefixes from the current prefix.  
+    Ordered by Desc by default.
+    Also converts {DATEID} or {DATETIMEID} based on date parameter.  
+    Default to current datetime.
+    """
+    path = S3Path(s3_path)
+    lst = S3BotoClient.ls(s3_uri=s3_path, recursive=False, date_id=date)
+    to_remove_lst = lst[:-top]
+    for val in to_remove_lst:
+        full_path = "/".join(["s3:", "", path.bucket, val.key])
+        print(f"removing {full_path} from s3")
+        S3BotoClient.rm(s3_uri=full_path, recursive=True, date_id=date)
 
 if __name__ == "__main__":
     main()
