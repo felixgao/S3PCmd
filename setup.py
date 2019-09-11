@@ -29,7 +29,7 @@ from setuptools.command.install import install as _install
 __author__ = "Felix Gao"
 __copyright__ = "Copyright 2012-2018 Intuit, Inc."
 __license__ = "http://www.apache.org/licenses/LICENSE-2.0"
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __maintainer__ = "Felix Gao"
 __status__ = "Development"
 
