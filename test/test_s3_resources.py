@@ -48,11 +48,39 @@ def test_s3path_ls_objects(uri: str, expected: int):
         assert len(items) == expected
         assert items[0]['Key'] == s3_path.path
     else :
-        for key in ["{prefix}/key{idx:03}".format(prefix=s3_path.path, idx=idx) for idx in range(2) ]:
+        for key in ["{prefix}/key{idx:03}".format(prefix=s3_path.path[:-1], idx=idx) for idx in range(2) ]:
             bucket.put_object(Key=key, Body=b'')
-        bucket.put_object(Key="{prefix}/_SUCCESS".format(prefix=s3_path.path))
+        bucket.put_object(Key="{prefix}/_SUCCESS".format(prefix=s3_path.path[:-1]))
         items = sorted([obj for obj in s3_path.ls(page_size=1)], key=lambda obj: obj['Key'], reverse=True)
         assert len(items) == expected + 1
+
+@pytest.mark.parametrize(
+    'uri, expected', [
+        ("s3://{bucket}/prefix/2019-09-01/".format(bucket=BUCKET), 
+        2
+        ),
+        ("s3://{bucket}/prefix/2019-09-01/key000".format(bucket=BUCKET), 
+        1
+        )
+    ]
+)
+@mock_s3
+def test_s3path_ls_non_recursive_objects(uri: str, expected: int):
+    #TODO: implement non recursive ls
+    res = boto3.resource('s3')
+    res.create_bucket(Bucket=BUCKET)
+    s3_path = S3Path(uri)
+    bucket = S3BotoClient.get_bucket(s3_path.bucket)
+    if s3_path.is_file() :
+        bucket.put_object(Key=s3_path.path, Body=b'')    
+        items = sorted([obj for obj in s3_path.ls(recursive=False, page_size=1)], key=lambda obj: obj['Key'], reverse=True)
+    else :
+        for key in ["{prefix}/key{idx:03}".format(prefix=s3_path.path[:-1], idx=idx) for idx in range(2) ]:
+            bucket.put_object(Key=key, Body=b'')
+        items = sorted([obj for obj in s3_path.ls(recursive=False, page_size=1)], key=lambda obj: obj['Key'], reverse=True)
+    assert len(items) == expected
+    if s3_path.is_file():
+        assert items[0]['Key'] == s3_path.path
 
 @pytest.mark.parametrize(
     'from_path, to_path, file_count, excludes', [

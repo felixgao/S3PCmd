@@ -53,7 +53,7 @@ def invalid_uri():
 def test_boto_client_ls_objects(uri: str, bucket: str, prefix: str, num_of_objs: int, list_num: int, expected_num: int):
     create_test_bucket_and_keys(num_of_objs, bucket, prefix)
     s3_uri = uri.format(bucket=bucket, prefix=prefix)
-    contents = S3BotoClient.ls(s3_uri, list_num)
+    contents = S3BotoClient.ls(s3_uri, recursive=True, limit=list_num)
     assert len(contents) == expected_num
 
 
@@ -173,5 +173,3 @@ def test_boto_client_cp_single_object(uri_template: str, src_bucket: str, src_pr
         assert src.size == dst.size
         assert src.owner == dst.owner
         assert src.etag == dst.etag
-
-

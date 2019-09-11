@@ -95,17 +95,21 @@ class S3Path(object):
             Body=body,
         )
 
-    def ls(self, page_size: int = 100, max_items: int = 1_000_000) -> Iterator[Dict]:
+    def ls(self, recursive=True, page_size: int = 100, max_items: int = 1_000_000) -> Iterator[Dict]:
         s3 = S3BotoClient.get_client()
         paginator: ListObjectsV2 = s3.get_paginator("list_objects_v2")
         operation_parameters = {"Bucket": self.bucket, "Prefix": self.path}
+        if not recursive:
+            operation_parameters.update(Delimiter='/')
         for page_iterator in paginator.paginate(
             **operation_parameters,
             PaginationConfig={"MaxItems": max_items, "PageSize": page_size},
         ):
             try:
-                contents = page_iterator["Contents"]
+                contents = page_iterator.get("Contents", page_iterator.get('CommonPrefixes'))
             except KeyError:
+                return
+            if not contents:
                 return
             for obj in contents:
                 # obj contains Contents from
@@ -222,6 +226,8 @@ class S3DatePath(S3Path):
     def __init__(self, uri: str):
         super(S3DatePath, self).__init__(uri)
         self._path_lst = [p for p in self.path.split("/") if p.strip() != ""]
+        if self.path[-1] == "/":
+            self._path_lst.append("")
         self._params = self._parse_params(self._path_lst)
 
     def _parse_params(self, path_lst: List[str]) -> List[S3DateParam]:
@@ -335,7 +341,7 @@ class S3BotoClient(object):
 
     @classmethod
     @log_calls
-    def ls(cls, s3_uri: str, limit=1_000, date_id=datetime.utcnow()) -> List[S3ListContent]:
+    def ls(cls, s3_uri: str, recursive=False, limit=1_000, date_id=datetime.utcnow()) -> List[S3ListContent]:
         """ Performs cases in-sensitive listing of keys under the path """
         if not S3Path.is_valid(s3_uri):
             raise cls.InvalidS3PathError(
@@ -347,13 +353,13 @@ class S3BotoClient(object):
                 (
                     S3ListContent._make(
                         [
-                            obj["Key"],
+                            obj.get("Key", obj.get('Prefix')),
                             obj.get("Size", 0),
                             obj.get("Owner", {}).get("DisplayName", ""),
                             obj.get("ETag", ''),
                         ]
                     )
-                    for obj in s3_path.ls()
+                    for obj in s3_path.ls(recursive=recursive)
                 ),
                 limit,
             )
@@ -408,14 +414,15 @@ def main(ctx):
 @main.command()
 @click.argument('path', nargs=1)
 @click.option('--date', '-d', type=click.DateTime(formats=["%Y-%m-%d %H:%M:%S"]), default=datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
-def ls(path, date):
+@click.option('--recursive', '-r', is_flag=True)
+def ls(path, date, recursive):
     """
     list all the keys associated with the current path.  
     Also converts {DATEID} or {DATETIMEID} based on date parameter.  
     Default to current datetime.
     """
     print("Keys")
-    for obj in S3BotoClient.ls(path, date_id=date):
+    for obj in S3BotoClient.ls(path, recursive=recursive, date_id=date):
         print(f'{obj.key}')
 
 @main.command()
